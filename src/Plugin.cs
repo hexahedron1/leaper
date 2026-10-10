@@ -7,20 +7,23 @@ using System.Security.Permissions;
 [assembly: SecurityPermission(SecurityAction.RequestMinimum, SkipVerification = true)]
 #pragma warning restore CS0618
 
-namespace TestMod;
+namespace Leaper;
 
 [BepInPlugin(GUID, Name, Version)]
 sealed class Plugin : BaseUnityPlugin {
     public const string GUID = "hexahedron1.leaper";
     public const string Name = "The Leaper";
-    public const string Version = "0.0.0"; // TODO: version
+    public const string Version = "0.0.19"; // TODO: version
     public new static ManualLogSource Logger;
     private static bool IsInit;
-
-    public void OnEnable()
-    {
+    
+    public void OnEnable() {
         Logger = base.Logger;
         On.RainWorld.OnModsInit += OnModsInit;
+    }
+
+    public void OnDisable() {
+        Hooks.Unapply();
     }
 
     private void OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self)
@@ -29,7 +32,7 @@ sealed class Plugin : BaseUnityPlugin {
 
         if (IsInit) return;
         IsInit = true;
-
+        Hooks.Apply();
         // Initialize assets, your mod config, and anything that uses RainWorld here
         Logger.LogDebug("Hello world!");
     }
