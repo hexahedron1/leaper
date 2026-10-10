@@ -9,9 +9,11 @@ using System.Security.Permissions;
 
 namespace TestMod;
 
-[BepInPlugin("com.author.testmod", "Test Mod", "0.1.0")]
-sealed class Plugin : BaseUnityPlugin
-{
+[BepInPlugin(GUID, Name, Version)]
+sealed class Plugin : BaseUnityPlugin {
+    public const string GUID = "hexahedron1.leaper";
+    public const string Name = "The Leaper";
+    public const string Version = "0.0.0"; // TODO: version
     public new static ManualLogSource Logger;
     private static bool IsInit;
 

@@ -1,11 +1,11 @@
 ﻿{
-  "id": "testmod",
-  "name": "Test Mod",
-  "version": "0.1.0",
-  "authors": "Author",
-  "description": "Put a neat description here",
+  "id": "hexahedron1.leaper",
+  "name": "The Leaper",
+  "version": "0.0.0",
+  "authors": "hexahedron1",
+  "description": "Cyan lizard but scug",
   "tags": [],
-  "requirements": [],
-  "requirements_names": [],
-  "checksum_override_version": false
+  "requirements": [ "slime-cubed.slugbase" ],
+  "requirements_names": [ "SlugBase" ],
+  "checksum_override_version": true
 }
