@@ -13,7 +13,7 @@ namespace Leaper;
 sealed class Plugin : BaseUnityPlugin {
     public const string GUID = "hexahedron1.leaper";
     public const string Name = "The Leaper";
-    public const string Version = "0.0.19"; // TODO: version
+    public const string Version = "0.1.11"; // TODO: version
     public new static ManualLogSource Logger;
     private static bool IsInit;
     
@@ -24,16 +24,14 @@ sealed class Plugin : BaseUnityPlugin {
 
     public void OnDisable() {
         Hooks.Unapply();
+        IsInit = false;
+        On.RainWorld.OnModsInit -= OnModsInit;
     }
 
-    private void OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self)
-    {
+    private void OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self) {
         orig(self);
-
         if (IsInit) return;
         IsInit = true;
         Hooks.Apply();
-        // Initialize assets, your mod config, and anything that uses RainWorld here
-        Logger.LogDebug("Hello world!");
     }
 }

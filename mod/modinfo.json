@@ -1,10 +1,10 @@
 ﻿{
   "id": "hexahedron1.leaper",
   "name": "The Leaper",
-  "version": "0.0.19",
+  "version": "0.1.11",
   "authors": "hexahedron1",
   "description": "Cyan lizard but scug",
-  "tags": [],
+  "tags": [ "Campaigns" ],
   "requirements": [ "slime-cubed.slugbase", "moreslugcats" ],
   "requirements_names": [ "SlugBase", "More Slugcats Expansion" ],
   "checksum_override_version": true
