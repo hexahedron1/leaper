@@ -13,7 +13,7 @@ namespace Leaper;
 sealed class Plugin : BaseUnityPlugin {
     public const string GUID = "hexahedron1.leaper";
     public const string Name = "The Leaper";
-    public const string Version = "0.1.11"; // TODO: version
+    public const string Version = "0.3.0.9"; // TODO: version
     public new static ManualLogSource Logger;
     private static bool IsInit;
     
@@ -33,5 +33,6 @@ sealed class Plugin : BaseUnityPlugin {
         if (IsInit) return;
         IsInit = true;
         Hooks.Apply();
+        LeaperEnums.ChargeLoop = new("ChargeLoop", true);
     }
 }
