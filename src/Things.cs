@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -18,6 +19,7 @@ using Random = UnityEngine.Random;
 namespace Leaper;
 
 public class LeaperData {
+    
     public class GraphicsData {
         public int tailSpecklesIndex;
         public Color eyeColor;
@@ -30,6 +32,9 @@ public class LeaperData {
     public float exhaustion;
     public bool exhausted;
     public ChunkSoundEmitter sound;
+    // TIL you can assign names to these
+    public List<(Spear spear, BodyChunk chunk, Vector2 offset, bool open, float width)> punctures = [];
+    public bool punctured;
 }
 // i love copying an entire class and just changing it up a bit
 public class LeaperSmoke(Room room, PlayerGraphics pg) : SmokeSystem(LeaperEnums.LeaperSmoke, room, 2, 0.0f) {
@@ -77,7 +82,9 @@ public class LeaperSmoke(Room room, PlayerGraphics pg) : SmokeSystem(LeaperEnums
             ++counter;
             if (!room.GetTile(pos).Solid || room.GetTile(lastPos).Solid)
                 return;
-            FloatRect floatRect = Custom.RectCollision(pos, lastPos, room.TileRect(SharedPhysics.RayTraceTilesForTerrainReturnFirstSolid(room, room.GetTilePosition(lastPos), room.GetTilePosition(pos)).Value).Grow(2f));
+            var intrect = SharedPhysics.RayTraceTilesForTerrainReturnFirstSolid(room, room.GetTilePosition(lastPos), room.GetTilePosition(pos));
+            if (!intrect.HasValue) return;
+            FloatRect floatRect = Custom.RectCollision(pos, lastPos, room.TileRect(intrect.Value).Grow(2f));
             pos = floatRect.GetCorner(FloatRect.CornerLabel.D);
             if (floatRect.GetCorner(FloatRect.CornerLabel.B).x < 0.0)
                 vel.x = Mathf.Abs(vel.x);
@@ -120,7 +127,7 @@ public class LeaperSmoke(Room room, PlayerGraphics pg) : SmokeSystem(LeaperEnums
         }
     }
 }
-// ditto
+// i love copying an entire cla
 public class LeapLight : CosmeticSprite {
     public float life;
     public float lastLife;
@@ -187,6 +194,32 @@ public class LeaperEnums {
     public static SoundID ChargeLoop;
 }
 
+public readonly struct Matrix2x2(float a11, float a12, float a21, float a22) {
+    public Matrix2x2(Vector2 col1, Vector2 col2) : this(col1.x, col2.x, col1.y, col2.y) {}
+    private readonly float[,] data = new[,] {
+        { a11, a12 },
+        { a21, a22 }
+    };
+    public float this[int x,int y] {
+        get => data[y, x];
+        set => data[y, x] = value;
+    }
+    public Matrix2x2 Transpose => new(this[0, 0], this[0, 1], this[1, 0], this[1, 1]);
+    public Vector2 Transform(Vector2 v) => new(Vector2.Dot(v, new Vector2(this[0, 0], this[0, 1])), Vector2.Dot(v, new Vector2(this[1, 0], this[1, 1])));
+    public float Determinant => this[0,0] * this[1,1] - this[0,1] * this[1,0];
+    public Matrix2x2 Cofactors => new(this[1, 1], -this[0, 1], -this[1, 0], this[0, 0]);
+    public Matrix2x2 Adjoint => Cofactors.Transpose;
+    public Matrix2x2 Inverse {
+        get {
+            if (Determinant == 0) throw new InvalidOperationException("Unable to find inverse of a matrix with determinant 0");
+            return Adjoint/Determinant;
+        }
+    }
+    public static Matrix2x2 operator *(float s, Matrix2x2 m) => new(m[0, 0] * s, m[1, 0] * s, m[0, 1] * s, m[1, 1] * s);
+    public static Matrix2x2 operator *(Matrix2x2 m, float s) => s*m;
+    public static Matrix2x2 operator /(Matrix2x2 m, float s) => 1/s*m;
+}
+
 [SuppressMessage("ReSharper", "ObjectCreationAsStatement")]
 public class Hooks {
     public static float chargeDepleteRate = 0.2f;
@@ -196,6 +229,7 @@ public class Hooks {
     public static bool TryGetGraphicsData(PlayerGraphics key, out LeaperData.GraphicsData data) {
         data = key != null ? pGraphicsCWT.GetOrCreateValue(key) : null;
         return data != null;
+        
     }
     public static bool TryGetData(Player key, out LeaperData data) {
         data = key != null ? playerCWT.GetOrCreateValue(key) : null;
@@ -214,10 +248,13 @@ public class Hooks {
         On.Player.Update -= On_Player_Update;
         On.HUD.HUD.InitSinglePlayerHud -= On_HUD_InitSinglePlayerHud;
         IL.MoreSlugcats.BreathMeter.Update -= IL_BreathMeter_Update;
+        On.DebugMouse.Update -= On_DebugMouse_Updae;
+        On_BreathMeter_Show_Get.Undo();
+        On.Player.SpearStick -= On_Player_SpearStick;
         LeaperEnums.Leaper.Unregister();
         LeaperEnums.LeaperSmoke.Unregister();
     }
-
+    private static Hook On_BreathMeter_Show_Get;
     public static void Apply() {
         try {
             On.PlayerGraphics.ctor += On_PlayerGraphics_ctor;
@@ -233,19 +270,30 @@ public class Hooks {
             IL.MoreSlugcats.BreathMeter.Update += IL_BreathMeter_Update;
             On.DebugMouse.Update += On_DebugMouse_Updae;
             Plugin.Logger.LogDebug("trying to hook Breathmeter.Show.get");
-            foreach (var propertyInfo in typeof(BreathMeter).GetProperties(BindingFlags.Instance | BindingFlags.NonPublic)) {
-                Plugin.Logger.LogDebug(propertyInfo.Name);
-            }
-            new Hook(typeof(BreathMeter).GetProperty(nameof(BreathMeter.Show), BindingFlags.Instance | BindingFlags.NonPublic)!.GetGetMethod(true), MH_BreathMeter_Show);
+            On_BreathMeter_Show_Get = new Hook(typeof(BreathMeter).GetProperty(nameof(BreathMeter.Show), BindingFlags.Instance | BindingFlags.NonPublic)!.GetGetMethod(true), MH_BreathMeter_Show);
+            On.Player.SpearStick += On_Player_SpearStick;
         }
         catch (Exception e) {
             Plugin.Logger.LogError("FAILED TO HOOK SHIT");
             Plugin.Logger.LogError(e);
         }
     }
+    private static bool On_Player_SpearStick(On.Player.orig_SpearStick orig, Player self, Weapon source, float dmg, BodyChunk chunk, PhysicalObject.Appendage.Pos appPos, Vector2 direction) {
+        var ret = orig(self, source, dmg, chunk, appPos, direction);
+        if (!ret || source == null || !TryGetData(self, out var data) || !LeapCharge.TryGet(self, out _)) return ret;
+        Spear spear = (source as Spear)!;
+        // this is why you learn linear algebra
+        Matrix2x2 matrix = new(chunk.Rotation, new Matrix2x2(0, -1, 1, 0).Transform(chunk.Rotation));
+        Vector2 transform = matrix.Transform(spear.firstChunk.pos - chunk.pos);
+        data.punctures.Add((spear, chunk, transform, false, Random.Range(0.01f, 0.1f)));
+        if (data.sound == null || data.punctures.Count == 1) return true;
+        data.sound.alive = false;
+        data.sound = null;
+        return true;
+    }
 
     public static bool MH_BreathMeter_Show(Func<BreathMeter, bool> orig, BreathMeter self) {
-        if (TryGetData(self.hudPlayer, out var data) && LeapCharge.TryGet(self.hudPlayer, out float charge) && charge > 0) return orig(self) || data.storedCharge < charge;
+        if (TryGetData(self.hudPlayer, out var data) && !data.punctured && LeapCharge.TryGet(self.hudPlayer, out float charge) && charge > 0) return orig(self) || data.storedCharge < charge;
         return orig(self);
     }
 
@@ -294,108 +342,156 @@ public class Hooks {
 
     private static void On_Player_Update(On.Player.orig_Update orig, Player self, bool eu) {
         orig(self, eu);
-        if (!TryGetData(self, out var data) || !LeapCharge.TryGet(self, out float charge) || charge <= 0) return;
-        if (self.input[0].spec) {
-            if (data.storedCharge >= chargeDepleteRate) {
-                data.storedCharge -= chargeDepleteRate;
-                data.usingCharge += chargeDepleteRate;
-            }
-            if (data.sound != null) {
-                data.sound.alive = true;
-                data.sound.volume = data.usingCharge / charge;
-            } else {
-                data.sound = self.room.PlaySound(LeaperEnums.ChargeLoop, self.mainBodyChunk, true, 0f, 1f);
-                data.sound.requireActiveUpkeep = true;
-            }
-        }
-        else if (data.sound != null) {
-            data.sound.alive = false;
-            data.sound = null;
-        }
-        if (!self.input[0].spec) {
-            if (data.specWasHeld && self.canJump <= 0 && self.bodyMode != Player.BodyModeIndex.CorridorClimb) {
-                if (data.usingCharge < 1f && data.storedCharge >= 1-data.usingCharge) {
-                    //Plugin.Logger.LogDebug(1f - data.usingCharge);
-                    data.storedCharge -= 1f - data.usingCharge;
-                    data.usingCharge = 1f;
+        try {
+            if (!TryGetData(self, out var data) || !LeapCharge.TryGet(self, out float charge) || charge <= 0) return;
+            if (self.input[0].spec) {
+                if (data.storedCharge >= chargeDepleteRate) {
+                    data.storedCharge -= chargeDepleteRate;
+                    data.usingCharge += chargeDepleteRate;
                 }
+                if (!data.punctured) {
+                    if (data.sound != null) {
+                        data.sound.alive = true;
+                        data.sound.volume = data.usingCharge/charge*2;
+                    } else {
+                        data.sound = self.room.PlaySound(LeaperEnums.ChargeLoop, self.mainBodyChunk, true, 0f, 1f);
+                        data.sound.requireActiveUpkeep = true;
+                    }
+                }
+            }
+            else if (!data.punctured && data.sound != null) {
+                data.sound.alive = false;
+                data.sound = null;
+            }
+            float leakSound = 0;
+            if (data.punctured) {
                 if (data.smoke != null && data.smoke.room != self.room) {
                     data.smoke.Destroy();
                     data.smoke = null;
                 }
-
                 if (data.smoke == null) {
                     data.smoke = new LeaperSmoke(self.room, (PlayerGraphics)self.graphicsModule);
                     self.room.AddObject(data.smoke);
                 }
-                if (data.exhausted)
-                    data.usingCharge *= Mathf.Lerp(1, 0.5f, Mathf.Min(0.2f - data.exhaustion/1.5f, 1));
-                if (data.usingCharge >= 1f) {
-                    switch (data.usingCharge) {
-                        case <= 5 / 3f:
-                            self.room.PlaySound(SoundID.Cyan_Lizard_Small_Jump, self.mainBodyChunk);
-                            break;
-                        case <= 10 / 3f:
-                            self.room.PlaySound(SoundID.Cyan_Lizard_Medium_Jump, self.mainBodyChunk);
-                            break;
-                        default:
-                            self.room.PlaySound(SoundID.Cyan_Lizard_Powerful_Jump, self.mainBodyChunk);
-                            break;
-                    }
-                    
-                    if (self.graphicsModule is PlayerGraphics pg) {
-                        self.room.InGameNoise(new InGameNoise(pg.tail[2].pos, 3000f * data.usingCharge / charge, self,
-                            1f));
-                        for (int i = 0; i < 8 * data.usingCharge / charge; ++i)
-                            data.smoke.EmitSmoke(pg.tail[2].pos,
-                                Custom.RNV() * Mathf.Lerp(6f, 23f, data.usingCharge / charge), true, pg,
-                                Mathf.Lerp(30f, 160f, data.usingCharge / charge));
-                        self.room.AddObject(new ShockWave(pg.tail[2].pos,
-                            Mathf.Lerp(40f, 120f, data.usingCharge / charge), 0.07f,
-                            6 + (int)((double)data.usingCharge / charge * 4.0)));
-                        self.room.AddObject(new LeapLight(pg.tail[2].pos, pg, data.usingCharge/charge));
-                    }
-
-                    float x = self.input[0].x;
-                    float y = self.input[0].y;
-                    if (x == 0 && y == 0) y = 1f;
-                    else if (y == 0) y = 0.2f;
-                    self.bodyChunks[0].vel.x = Mathf.Lerp(5f, 20f, data.usingCharge / charge) * x;
-                    self.bodyChunks[0].vel.y = Mathf.Lerp(9f, 30f, data.usingCharge / charge) * y;
-                    self.bodyChunks[1].vel.x = Mathf.Lerp(4f, 19f, data.usingCharge / charge) * x;
-                    self.bodyChunks[1].vel.y = Mathf.Lerp(8f, 29f, data.usingCharge / charge) * y;
-                    data.lastLeap = self.room.game.timeInRegionThisCycle;
-                    self.animation = Player.AnimationIndex.Flip;
-                    self.bodyMode = Player.BodyModeIndex.Default;
-                    data.exhaustion += data.usingCharge / 8f;
-                    if (data.exhaustion >= 2f) {
-                        self.Stun(40 + (int)data.usingCharge*20);
-                    }
-                    data.usingCharge = 0f;
-                }
-                else if (self.graphicsModule is PlayerGraphics pg)
-                    data.smoke.EmitSmoke(pg.tail[2].pos, Custom.RNV() * Mathf.Lerp(6f, 23f, data.usingCharge / charge), true, pg, Mathf.Lerp(30f, 160f, data.usingCharge / charge));
-            } else if (data.usingCharge >= chargeDepleteRate) {
-                data.storedCharge += chargeDepleteRate;
-                data.usingCharge -= chargeDepleteRate;
-            } else if (data.storedCharge <= charge - chargeDepleteRate / 12 && self.room.game.timeInRegionThisCycle - data.lastLeap > 60) {
-                data.storedCharge += chargeDepleteRate / (self.Malnourished ? 12 : 6);
-                if (data.storedCharge > charge - chargeDepleteRate / (self.Malnourished ? 12 : 6))
-                    data.storedCharge = charge;
             }
+            foreach (var t in data.punctures) {
+                var puncture = t;
+                if (puncture.spear.stuckInObject != self) puncture.open = true;
+                if (!puncture.open) continue;
+                data.punctured = true;
+                float pressure = Mathf.Sqrt(data.usingCharge)/data.punctures.Count;
+                if (!(data.usingCharge > pressure*puncture.width)) continue;
+                leakSound = pressure;
+                data.usingCharge -= pressure*puncture.width;
+                Plugin.Logger.LogDebug($"rotation: {puncture.chunk.Rotation}");
+                Vector2 vec = new Matrix2x2(puncture.chunk.Rotation, new Matrix2x2(0, -1, 1, 0).Transform(puncture.chunk.Rotation)).Inverse.Transform(puncture.offset) * pressure;
+                Vector2 pos = puncture.chunk.pos + vec;
+                data.smoke?.EmitSmoke(pos, vec*2, false, self.graphicsModule as PlayerGraphics, 60f);
+                puncture.chunk.vel += -vec*puncture.width;
+                if (pressure > 2) self.Stun(20);
+                self.room.InGameNoise(new InGameNoise(pos, 3000f * pressure, self, 0.1f));
+            }
+            if (data.punctured) {
+                if (leakSound > 0) {
+                    if (data.sound == null) {
+                        data.sound = self.room.PlaySound(SoundID.Cyan_Lizard_Gas_Leak_LOOP, self.firstChunk, true, leakSound, 1f);
+                        data.sound.requireActiveUpkeep = true;
+                    } else {
+                        data.sound.alive = true;
+                        data.sound.volume = leakSound;
+                    }
+                } else if (data.sound != null) {
+                    data.sound.alive = false;
+                    data.sound = null;
+                }
+            } 
+            if (!self.input[0].spec && !self.dead) {
+                if (!data.punctured && data.specWasHeld && self.canJump <= 0 && self.bodyMode != Player.BodyModeIndex.CorridorClimb) {
+                    if (data.usingCharge < 1f && data.storedCharge >= 1 - data.usingCharge) {
+                        data.storedCharge -= 1f - data.usingCharge;
+                        data.usingCharge = 1f;
+                    }
+                    if (data.smoke != null && data.smoke.room != self.room) {
+                        data.smoke.Destroy();
+                        data.smoke = null;
+                    }
+                    if (data.smoke == null) {
+                        data.smoke = new LeaperSmoke(self.room, (PlayerGraphics)self.graphicsModule);
+                        self.room.AddObject(data.smoke);
+                    }
+                    if (data.exhausted)
+                        data.usingCharge *= Mathf.Lerp(1, 0.5f, Mathf.Min(0.2f - data.exhaustion / 1.5f, 1));
+                    if (data.usingCharge >= 1f) {
+                        switch (data.usingCharge) {
+                            case <= 5 / 3f:
+                                self.room.PlaySound(SoundID.Cyan_Lizard_Small_Jump, self.mainBodyChunk);
+                                break;
+                            case <= 10 / 3f:
+                                self.room.PlaySound(SoundID.Cyan_Lizard_Medium_Jump, self.mainBodyChunk);
+                                break;
+                            default:
+                                self.room.PlaySound(SoundID.Cyan_Lizard_Powerful_Jump, self.mainBodyChunk);
+                                break;
+                        }
+
+                        if (self.graphicsModule is PlayerGraphics pg) {
+                            self.room.InGameNoise(new InGameNoise(pg.tail[2].pos, 3000f * data.usingCharge / charge, self,
+                                1f));
+                            for (int i = 0; i < 8 * data.usingCharge / charge; ++i)
+                                data.smoke.EmitSmoke(pg.tail[2].pos,
+                                    Custom.RNV() * Mathf.Lerp(6f, 23f, data.usingCharge / charge), true, pg,
+                                    Mathf.Lerp(30f, 160f, data.usingCharge / charge));
+                            self.room.AddObject(new ShockWave(pg.tail[2].pos,
+                                Mathf.Lerp(40f, 120f, data.usingCharge / charge), 0.07f,
+                                6 + (int)((double)data.usingCharge / charge * 4.0)));
+                            self.room.AddObject(new LeapLight(pg.tail[2].pos, pg, data.usingCharge / charge));
+                        }
+
+                        float x = self.input[0].x;
+                        float y = self.input[0].y;
+                        if (x == 0 && y == 0) y = 1f;
+                        else if (y == 0) y = 0.2f;
+                        self.bodyChunks[0].vel.x = Mathf.Lerp(5f, 20f, data.usingCharge / charge) * x;
+                        self.bodyChunks[0].vel.y = Mathf.Lerp(9f, 30f, data.usingCharge / charge) * y;
+                        self.bodyChunks[1].vel.x = Mathf.Lerp(4f, 19f, data.usingCharge / charge) * x;
+                        self.bodyChunks[1].vel.y = Mathf.Lerp(8f, 29f, data.usingCharge / charge) * y;
+                        data.lastLeap = self.room.game.timeInRegionThisCycle;
+                        self.animation = Player.AnimationIndex.Flip;
+                        self.bodyMode = Player.BodyModeIndex.Default;
+                        data.exhaustion += data.usingCharge / 8f;
+                        if (data.exhaustion >= 2f) {
+                            self.Stun(40 + (int)data.usingCharge * 20);
+                        }
+                        data.usingCharge = 0f;
+                    }
+                    else if (self.graphicsModule is PlayerGraphics pg)
+                        data.smoke.EmitSmoke(pg.tail[2].pos, Custom.RNV() * Mathf.Lerp(6f, 23f, data.usingCharge / charge), true, pg, Mathf.Lerp(30f, 160f, data.usingCharge / charge));
+                } else if (data.usingCharge >= chargeDepleteRate) {
+                    data.storedCharge += chargeDepleteRate;
+                    data.usingCharge -= chargeDepleteRate;
+                } else if (data.storedCharge <= charge - chargeDepleteRate / 12 && self.room.game.timeInRegionThisCycle - data.lastLeap > 60) {
+                    data.storedCharge += chargeDepleteRate / (self.Malnourished ? 12 : 6);
+                    if (data.storedCharge > charge - chargeDepleteRate / (self.Malnourished ? 12 : 6))
+                        data.storedCharge = charge;
+                }
+            }
+            if (data.exhaustion > 0) data.exhaustion -= 0.001f * (data.exhaustion >= 2f ? 1.3f : Mathf.Lerp(0.6f, 1, Math.Min(data.exhaustion, 1))) * (self.bodyMode == Player.BodyModeIndex.Crawl ? 2 : 1);
+            if (data.exhaustion >= 1f) {
+                data.exhausted = true;
+            }
+            else if (data.exhausted && data.exhaustion < 0.2f && !self.Malnourished)
+                data.exhausted = false;
+            if (data.exhausted) {
+                self.exhausted = true;
+                self.lungsExhausted = true;
+            }
+            if (data.exhaustion > 3f)
+                self.Stun(20);
+            data.specWasHeld = self.input[0].spec;
+        } catch (Exception e) {
+            Plugin.Logger.LogError("shit");
+            Plugin.Logger.LogError(e); 
         }
-        if (data.exhaustion > 0) data.exhaustion -= 0.001f * (data.exhaustion >= 2f ? 1.3f : Mathf.Lerp(0.6f, 1, Math.Min(data.exhaustion, 1))) * (self.bodyMode == Player.BodyModeIndex.Crawl ? 2 : 1);
-        if (data.exhaustion >= 1f) {
-            data.exhausted = true;
-        } else if (data.exhausted && data.exhaustion < 0.2f && !self.Malnourished)
-            data.exhausted = false;
-        if (data.exhausted) {
-            self.exhausted = true;
-            self.lungsExhausted = true;
-        }
-        if (data.exhaustion > 3f)
-            self.Stun(20);
-        data.specWasHeld = self.input[0].spec;
     }
 
     private static void On_Player_ctor(On.Player.orig_ctor orig, Player self, AbstractCreature abstractCreature, World world) {
@@ -427,6 +523,7 @@ public class Hooks {
             for (int j = 0; j < self.lines; j++) {
                 sLeaser.sprites[self.startSprite + i * self.lines + j].scaleX = 1 + 0.5f * (data.usingCharge / charge);
                 sLeaser.sprites[self.startSprite + i * self.lines + j].scaleY = 1 + 0.5f * (data.usingCharge / charge);
+                if (Mathf.Approximately(data.usingCharge, 0)) sLeaser.sprites[self.startSprite + i * self.lines + j].alpha = data.storedCharge / charge;
             }
         }
     }

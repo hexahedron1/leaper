@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<TargetFramework>net48</TargetFramework>
-		<LangVersion>13</LangVersion>
+		<LangVersion>14</LangVersion>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<OutputPath>../mod/newest/plugins</OutputPath>
 		<PathMap>$(MSBuildProjectDirectory)=/$(SolutionName)</PathMap>
